@@ -68,7 +68,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile || pnpm install
       - name: Apple Silicon app
-        run: pnpm tauri build --bundles app --ci --no-sign
+        run: |
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_BASE64 APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD || true
+          set +e
+          pnpm tauri build --bundles app --ci --no-sign --verbose >"$RUNNER_TEMP/tauri-mac.log" 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            tail -n 50 "$RUNNER_TEMP/tauri-mac.log" | while IFS= read -r line; do
+              clean=$(printf '%s' "$line" | tr '\r' ' ' | sed 's/::/%3A%3A/g')
+              echo "::error title=tauri-macos::$clean"
+            done
+            exit "$code"
+          fi
       - name: Zip Apple Silicon app
         run: |
           mkdir -p collect
