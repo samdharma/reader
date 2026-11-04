@@ -44,7 +44,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p collect
-          exe=$(find src-tauri/target target -path '*/release/reader.exe' -type f | head -n 1)
+          dirs=()
+          [ -d src-tauri/target ] && dirs+=(src-tauri/target)
+          [ -d target ] && dirs+=(target)
+          exe=$(/usr/bin/find "${dirs[@]}" -type f -path '*/release/reader.exe' | /usr/bin/head -n 1) || true
+          echo "found: ${exe:-none}"
           test -n "$exe"
           cp "$exe" collect/Reader-windows-x64.exe
       - uses: actions/upload-artifact@v4
@@ -68,7 +72,11 @@ jobs:
       - name: Zip Apple Silicon app
         run: |
           mkdir -p collect
-          app=$(find src-tauri/target target -path '*/release/bundle/macos/Reader.app' -name Reader.app | head -n 1)
+          dirs=()
+          [ -d src-tauri/target ] && dirs+=(src-tauri/target)
+          [ -d target ] && dirs+=(target)
+          app=$(/usr/bin/find "${dirs[@]}" -type d -path '*/release/bundle/macos/Reader.app' | /usr/bin/head -n 1) || true
+          echo "found: ${app:-none}"
           test -n "$app"
           ditto -c -k --keepParent "$app" collect/Reader-macos-arm64.zip
       - name: Intel app
@@ -76,7 +84,11 @@ jobs:
         run: |
           rustup target add x86_64-apple-darwin
           pnpm tauri build --bundles app --target x86_64-apple-darwin --ci --no-sign
-          app=$(find src-tauri/target target -path '*/x86_64-apple-darwin/release/bundle/macos/Reader.app' -name Reader.app | head -n 1)
+          dirs=()
+          [ -d src-tauri/target ] && dirs+=(src-tauri/target)
+          [ -d target ] && dirs+=(target)
+          app=$(/usr/bin/find "${dirs[@]}" -type d -path '*/x86_64-apple-darwin/release/bundle/macos/Reader.app' | /usr/bin/head -n 1) || true
+          echo "found: ${app:-none}"
           test -n "$app"
           ditto -c -k --keepParent "$app" collect/Reader-macos-x64.zip
       - uses: actions/upload-artifact@v4
@@ -105,7 +117,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p collect
-          img=$(find src-tauri/target target -path '*/release/bundle/appimage/*.AppImage' -type f | head -n 1)
+          dirs=()
+          [ -d src-tauri/target ] && dirs+=(src-tauri/target)
+          [ -d target ] && dirs+=(target)
+          img=$(/usr/bin/find "${dirs[@]}" -type f -path '*/release/bundle/appimage/*.AppImage' | /usr/bin/head -n 1) || true
+          echo "found: ${img:-none}"
           test -n "$img"
           cp "$img" collect/Reader-linux-x64.AppImage
           chmod +x collect/Reader-linux-x64.AppImage
