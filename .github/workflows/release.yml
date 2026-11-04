@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reader-release-${{ github.ref }}
+  group: reader-v0-1-0-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
