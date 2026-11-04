@@ -75,10 +75,8 @@ jobs:
           code=$?
           set -e
           if [ "$code" -ne 0 ]; then
-            tail -n 50 "$RUNNER_TEMP/tauri-mac.log" | while IFS= read -r line; do
-              clean=$(printf '%s' "$line" | tr '\r' ' ' | sed 's/::/%3A%3A/g')
-              echo "::error title=tauri-macos::$clean"
-            done
+            payload=$(tail -n 20 "$RUNNER_TEMP/tauri-mac.log" | sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g; s/::/%3A%3A/g' | tr '\n' '~')
+            echo "::error title=tauri-macos::$payload"
             exit "$code"
           fi
       - name: Zip Apple Silicon app
