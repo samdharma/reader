@@ -163,12 +163,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes=$(cat artifacts/RELEASE_NOTES.md)
+          set +e
           tag=v0.1.0
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" release/* --clobber
-            gh release edit "$tag" --notes "$notes" --title "Reader 0.1.0 alpha" --prerelease --latest
+            gh release upload "$tag" release/* --clobber >"$RUNNER_TEMP/gh.log" 2>&1
+            code=$?
+            if [ "$code" -eq 0 ]; then
+              gh release edit "$tag" --notes-file artifacts/RELEASE_NOTES.md --title "Reader 0.1.0 alpha" --prerelease >"$RUNNER_TEMP/gh.log" 2>&1
+              code=$?
+            fi
           else
-            gh release create "$tag" release/* --target "${{ github.sha }}" --title "Reader 0.1.0 alpha" --notes "$notes" --prerelease --latest
+            gh release create "$tag" release/* --target "${{ github.sha }}" --title "Reader 0.1.0 alpha" --notes-file artifacts/RELEASE_NOTES.md --prerelease >"$RUNNER_TEMP/gh.log" 2>&1
+            code=$?
+          fi
+          if [ "$code" -ne 0 ]; then
+            payload=$(tail -n 30 "$RUNNER_TEMP/gh.log" | tr '\n' '~' | sed 's/::/%3A%3A/g')
+            echo "::error title=gh-release::$payload"
+            exit "$code"
           fi
           gh release view "$tag" --json url,assets --jq '{url: .url, assets: [.assets[].name]}'
