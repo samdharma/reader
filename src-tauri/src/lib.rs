@@ -93,7 +93,7 @@ pub fn run() {
         .expect("Reader failed to start")
         .run(|app, event| {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
-            if let RunEvent::Opened { urls } = event {
+            if let RunEvent::Opened { ref urls } = event {
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
                         let _ = commands::open_and_emit(app, path);
