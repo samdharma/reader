@@ -1,0 +1,156 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reader-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile || pnpm install
+      - run: pnpm test
+      - run: pnpm build
+      - run: node scripts/check-bundle-budget.mjs
+      - run: cargo test -p reader-core
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile || pnpm install
+      - name: Portable Windows exe
+        run: pnpm tauri build --no-bundle --ci
+      - name: Collect exe
+        shell: bash
+        run: |
+          mkdir -p collect
+          exe=$(find src-tauri/target target -path '*/release/reader.exe' -type f | head -n 1)
+          test -n "$exe"
+          cp "$exe" collect/Reader-windows-x64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-windows-x64
+          path: collect/*
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile || pnpm install
+      - name: Apple Silicon app
+        run: pnpm tauri build --bundles app --ci --no-sign
+      - name: Zip Apple Silicon app
+        run: |
+          mkdir -p collect
+          app=$(find src-tauri/target target -path '*/release/bundle/macos/Reader.app' -name Reader.app | head -n 1)
+          test -n "$app"
+          ditto -c -k --keepParent "$app" collect/Reader-macos-arm64.zip
+      - name: Intel app
+        continue-on-error: true
+        run: |
+          rustup target add x86_64-apple-darwin
+          pnpm tauri build --bundles app --target x86_64-apple-darwin --ci --no-sign
+          app=$(find src-tauri/target target -path '*/x86_64-apple-darwin/release/bundle/macos/Reader.app' -name Reader.app | head -n 1)
+          test -n "$app"
+          ditto -c -k --keepParent "$app" collect/Reader-macos-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-macos
+          path: collect/*
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile || pnpm install
+      - name: AppImage
+        run: pnpm tauri build --bundles appimage --ci
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p collect
+          img=$(find src-tauri/target target -path '*/release/bundle/appimage/*.AppImage' -type f | head -n 1)
+          test -n "$img"
+          cp "$img" collect/Reader-linux-x64.AppImage
+          chmod +x collect/Reader-linux-x64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-linux-x64
+          path: collect/*
+          if-no-files-found: error
+
+  publish:
+    needs: [test, windows, macos, linux]
+    if: always() && needs.test.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: reader-*
+          path: release
+          merge-multiple: true
+      - name: SHA256SUMS
+        run: |
+          cd release
+          rm -f SHA256SUMS
+          sha256sum Reader-* | tee SHA256SUMS
+          echo
+          ls -lh
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(cat artifacts/RELEASE_NOTES.md)
+          tag=v0.1.0
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release/* --clobber
+            gh release edit "$tag" --notes "$notes" --title "Reader 0.1.0 alpha" --prerelease --latest
+          else
+            gh release create "$tag" release/* --target "${{ github.sha }}" --title "Reader 0.1.0 alpha" --notes "$notes" --prerelease --latest
+          fi
+          gh release view "$tag" --json url,assets --jq '{url: .url, assets: [.assets[].name]}'
